@@ -8,13 +8,12 @@ module Main where
 import Prelude hiding (FilePath)
 import Turtle hiding (Size)
 import Turtle.Format
-import qualified Data.Text as Text
-import qualified Data.List as List
--- import qualified Control.Foldl as Fold
 import Control.Arrow ((>>>))
-import Control.Monad (forM_)
 import Control.Exception (throw, toException, catch)
+import Control.Monad (forM_)
 import Data.Maybe (fromMaybe)
+import qualified Data.List as List
+import qualified Data.Text as Text
 import System.IO.Unsafe (unsafePerformIO)
 
 
@@ -127,7 +126,6 @@ resizeTilesets cfg@Config{..} = do
         , (PNG "PU-NuclearPlantInside", BeDone)
         , (PNG "PU-Nuclear08", Rearrange 7 352 Nothing)
         , (PNG "PU-NuclearPlant", Rearrange 3 720 Nothing)
-        -- , (PNG "PU-NuclearPlantInside", Rearrange 1 1008 Nothing)
         , (PNG "PU-PowerPlant_2", Rearrange 3 800 Nothing)
         , (PNG "PU-Tsukinami-Indoors", Rearrange 4 720 Nothing)
         , (PNG "PU-Underwater", Rearrange 2 544 Nothing)
@@ -186,7 +184,6 @@ fixAudioFiles Config{..} =
                 rm input
 
 
-    -- signature=$(echo $lsp_info | grep -oE "^\w+ :: .*$")
 resizeTileset :: Config -> FilePath -> ResizeAnd -> FilePath -> IO ExitCode
 resizeTileset Config{..} input resizeAnd output = do
     let location = godotProjectDir </> "Graphics/Tilesets/"
