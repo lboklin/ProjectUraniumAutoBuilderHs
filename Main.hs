@@ -55,7 +55,7 @@ main = do
 
 copyAndFixAssets :: Config -> IO ()
 copyAndFixAssets cfg@Config{..} = do
-    forM_ ["Fonts/", "Audio/", "Graphics/"] $ \subDir -> do
+    forM_ ["Fonts", "Audio", "Graphics"] $ \subDir -> do
         let srcsub = pokemonUraniumDir </> subDir
             tgtsub = godotProjectDir </> subDir
         printf ("Recursively copying: "%fp%" => "%fp%"\n") srcsub tgtsub
@@ -68,7 +68,7 @@ copyAndFixAssets cfg@Config{..} = do
 
 resizeTilesets :: Config -> IO ()
 resizeTilesets cfg@Config{..} = do
-    let location = godotProjectDir </> "Graphics/Tilesets/"
+    let location = godotProjectDir </> "Graphics/Tilesets"
         mkRealPath baseName = location </> fromText baseName <.> "png"
            
     forM_ pngs $ \(baseName, ops) -> do
@@ -155,7 +155,7 @@ deleteBrokenAndUnused Config{..} = do
         unless dryRun $ rm rp
   where
     brokenOrUnused :: [FilePath]
-    brokenOrUnused = fmap (godotProjectDir </> "Graphics/" </>)
+    brokenOrUnused = fmap (godotProjectDir </> "Graphics" </>)
         [ "Icons/icon000 - Cópia.png"
         , "Pictures/dialup.png"
         , "Pictures/Map_icon - Cópia.png"
@@ -165,7 +165,7 @@ deleteBrokenAndUnused Config{..} = do
 
 fixAudioFiles :: Config -> IO ()
 fixAudioFiles Config{..} =
-    let location = godotProjectDir </> "Audio/SE/"
+    let location = godotProjectDir </> "Audio/SE"
      in forM_
         [ ("pcm_s16le", "computerclose.WAV", "computerclosePCM.wav")
         , ("pcm_s16le", "computeropen.WAV", "computeropenPCM.wav")
@@ -186,7 +186,7 @@ fixAudioFiles Config{..} =
 
 resizeTileset :: Config -> FilePath -> ResizeAnd -> FilePath -> IO ExitCode
 resizeTileset Config{..} input resizeAnd output = do
-    let location = godotProjectDir </> "Graphics/Tilesets/"
+    let location = godotProjectDir </> "Graphics/Tilesets"
         scaled = location </> "scaled.png"
 
     printf ("Resizing and renaming "%fp%" => "%fp%"\n")
@@ -267,7 +267,7 @@ ffmpeg inputs args output = do
 relpath :: FilePath -> FilePath -> FilePath
 relpath fromDir fullPath =
     fullPath
-        & stripPrefix' fromDir
+        & stripPrefix (directory fromDir)
         & fromMaybe fullPath
 
 debugPrint :: MonadIO io => Format (io ()) (a -> IO b) -> a -> a
@@ -282,13 +282,3 @@ toText' =
     in toText >>> either err id
 
 whenJust = flip (maybe (return ()))
-
-
--- Fixes: stripPrefix "/path/to/dir"  "/path/to/dir/subdir" == Nothing
---        stripPrefix "/path/to/dir/" "/path/to/dir/subdir" == Just "subdir"
-stripPrefix' :: FilePath -> FilePath -> Maybe FilePath
-stripPrefix' p1 p2 =
-    toText p1
-        & id `either` id (<> "/")
-        & fromText
-        & stripPrefix `flip` p2
