@@ -1,24 +1,26 @@
 
-with (import <nixpkgs> {});
+with import <nixpkgs> {};
 let
   drv = haskellPackages.mkDerivation {
     pname = "ProjectUraniumAutoBuilderHs";
     version = "0.0.0.0";
     executableHaskellDepends = [
+      cabal-install
+      ffmpeg
       gmp
       zlib
-      ncurses
-
     ] ++ (with haskellPackages; [
-      cabal-install
       turtle
       text
     ]);
     src = ./.;
     isExecutable = true;
+    postConfigure = ''
+      substituteInPlace Main.hs --replace '(which "ffmpeg")' \
+        '(let bin = "${ffmpeg}/bin/ffmpeg" in do { exists <- testfile bin; if exists then return (Just bin) else return Nothing })'
+    '';
     shellHook = ''
       export LD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib
-      export PATH=$PATH:$HOME/.local/bin
     '';
     license = stdenv.lib.licenses.agpl3;
   };

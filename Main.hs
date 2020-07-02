@@ -43,7 +43,7 @@ main = do
             _ -> do
                 err "Usage: <path/to/pokemon-uranium> <path/to/godot-project>"
                 return ([], False)
-    Just ffmpegBin <- which "ffmpeg"
+    ffmpegBin <- getffmpeg
     let cfg = Config assetsDir targetDir ffmpegBin isDryRun
     when isDryRun $
         putStrLn "This is a dry run. Nothing will be changed."
