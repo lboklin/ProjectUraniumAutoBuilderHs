@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i runghc -p "haskellPackages.ghcWithPackages (p: [p.turtle p.text])"
+#! nix-shell -i runghc -p ffmpeg "haskellPackages.ghcWithPackages (p: [p.turtle p.text])"
 {-# LANGUAGE OverloadedStrings, LambdaCase, RecordWildCards, BangPatterns #-}
 
 -- | Translation of https://github.com/acedogblast/ProjectUraniumAutoBuilder/blob/master/Controller.java
@@ -47,10 +47,9 @@ main = do
     let cfg = Config assetsDir targetDir ffmpegBin isDryRun
     when isDryRun $
         putStrLn "This is a dry run. Nothing will be changed."
-    putStrLn "Working... please wait."
 
     copyAndFixAssets cfg
-    putStrLn "Done!"
+    putStrLn "\nDone!"
 
 
 copyAndFixAssets :: Config -> IO ()
@@ -58,24 +57,27 @@ copyAndFixAssets cfg@Config{..} = do
     forM_ ["Fonts", "Audio", "Graphics"] $ \subDir -> do
         let srcsub = pokemonUraniumDir </> subDir
             tgtsub = godotProjectDir </> subDir
-        printf ("Recursively copying: "%fp%" => "%fp%"\n") srcsub tgtsub
+        printf ("Recursively copying assets in: "%fp%" => "%fp%"\n") srcsub tgtsub
         unless dryRun $
             cptree srcsub tgtsub
-    deleteBrokenAndUnused cfg
     fixAudioFiles cfg
     resizeTilesets cfg
+
+    deleteBrokenAndUnused cfg
 
 
 resizeTilesets :: Config -> IO ()
 resizeTilesets cfg@Config{..} = do
     let location = godotProjectDir </> "Graphics/Tilesets"
-        mkRealPath baseName = location </> fromText baseName <.> "png"
-           
+        toFP baseName = fromText baseName <.> "png"
+        mkRealPath baseName = location </> toFP baseName
+
+    printf ("\nWorking in "%fp%"\n") location
     forM_ pngs $ \(baseName, ops) -> do
         basenameIn <- case baseName of
             Rename (PNG bn) newbn -> do
                 printf ("Renaming: "%fp%" => "%fp%"\n")
-                    (relpath godotProjectDir $ mkRealPath bn) (relpath godotProjectDir $ mkRealPath newbn)
+                    (toFP bn) (toFP newbn)
                 unless dryRun $
                     mv (mkRealPath bn) (mkRealPath newbn)
                 return newbn
@@ -83,9 +85,6 @@ resizeTilesets cfg@Config{..} = do
         let basenameOut = basenameIn <> "-Resized"
             output = mkRealPath basenameOut
         resizeTileset cfg (mkRealPath basenameIn) ops output
-        when (elem basenameOut uselessPngs) $ do
-            printf ("Removing useless file: "%fp%"\n") output
-            rm output
   where
     pngs =
         [ (PNG "Cavetiles", Rearrange 4 640 Nothing)
@@ -132,41 +131,44 @@ resizeTilesets cfg@Config{..} = do
         , (PNG "PU-VictoryRoad", Rearrange 3 720 Nothing)
         ]
 
-    uselessPngs =
-        [ "4"
-        , "5"
-        , "6"
-        , "7"
-        , "8"
-        , "NPU-Legen_Town"
-        , "OLDPU-Victory Road"
-        , "Outside"
-        , "Outside(new)"
-        , "PU-Angelure"
-        , "teste"
-        , "tileset blank"
-        ]
-
 
 deleteBrokenAndUnused :: Config -> IO ()
 deleteBrokenAndUnused Config{..} = do
-    forM_ brokenOrUnused $ \rp -> do
-        printf ("Deleting "%fp%"\n") rp
-        unless dryRun $ rm rp
+    putStrLn "\nLooking for unused or broken files..."
+    forM_ brokenOrUnused $ \absPath ->
+        if dryRun then
+            printf ("Removing: "%fp%"\n") absPath
+        else whenM (testfile absPath) $ do
+            printf ("Removing: "%fp%"\n") absPath
+            rm absPath
   where
     brokenOrUnused :: [FilePath]
-    brokenOrUnused = fmap (godotProjectDir </> "Graphics" </>)
+    brokenOrUnused = fmap
+        (godotProjectDir </> "Graphics" </>)
         [ "Icons/icon000 - Cópia.png"
         , "Pictures/dialup.png"
         , "Pictures/Map_icon - Cópia.png"
         , "Transitions/RotatingPieces.png"
+        , "Tilesets/4.png"
+        , "Tilesets/5.png"
+        , "Tilesets/6.png"
+        , "Tilesets/7.png"
+        , "Tilesets/8.png"
+        , "Tilesets/NPU-Legen_Town.png"
+        , "Tilesets/OLDPU-Victory Road.png"
+        , "Tilesets/Outside.png"
+        , "Tilesets/Outside(new).png"
+        , "Tilesets/PU-Angelure.png"
+        , "Tilesets/teste.png"
+        , "Tilesets/tileset blank.png"
         ]
 
 
 fixAudioFiles :: Config -> IO ()
-fixAudioFiles Config{..} =
+fixAudioFiles Config{..} = do
     let location = godotProjectDir </> "Audio/SE"
-     in forM_
+    printf ("\nWorking in "%fp%"\n") location
+    forM_
         [ ("pcm_s16le", "computerclose.WAV", "computerclosePCM.wav")
         , ("pcm_s16le", "computeropen.WAV", "computeropenPCM.wav")
         , ("copy", "PU-Grasswalk.ogg", "PU-GrasswalkFixed.ogg")
@@ -174,9 +176,10 @@ fixAudioFiles Config{..} =
         $ \(arg, fileIn, fileOut) -> do
             let input = location </> fileIn
                 output = location </> fileOut
+                cmnPfx = commonPrefix [input, output]
 
             printf ("Fixing audio file: "%fp%" => "%fp%"\n")
-                (relpath godotProjectDir input) (relpath godotProjectDir output)
+                (relpath cmnPfx input) (relpath cmnPfx output)
             if dryRun then
                 void $ ffmpegDry [input] ["-c:a", arg] output
             else do
@@ -188,15 +191,16 @@ resizeTileset :: Config -> FilePath -> ResizeAnd -> FilePath -> IO ExitCode
 resizeTileset Config{..} input resizeAnd output = do
     let location = godotProjectDir </> "Graphics/Tilesets"
         scaled = location </> "scaled.png"
+        cmnPfx = commonPrefix [input, output]
 
-    printf ("Resizing and renaming "%fp%" => "%fp%"\n")
-        (relpath godotProjectDir input) (relpath godotProjectDir output)
+    printf ("Resizing and renaming: "%fp%" => "%fp%"\n")
+        (relpath cmnPfx input) (relpath cmnPfx output)
     unless dryRun $ do
         -- rescale
-        ffmpeg [input] ["-vf", "scale=iw/2:ih/2:flags=neighbor"] scaled
+        !ExitSuccess <- ffmpeg [input] ["-vf", "scale=iw/2:ih/2:flags=neighbor"] scaled
 
         case resizeAnd of
-            BeDone -> return ()
+            BeDone -> mv scaled output
             Rearrange columns size mbPadding -> do
                 let parts =
                         [ location </> fromText (format d n) <.> "png"
@@ -206,7 +210,8 @@ resizeTileset Config{..} input resizeAnd output = do
                 -- rearrange columns
                 forM_ [0 .. columns - (maybe 1 (const 2) mbPadding)] $ \columni -> do
                     let args = ["-vf", format ("crop=128:"%d%":0:"%d) size (size * columni)]
-                    ffmpeg [scaled] args (parts !! columni) & void
+                    !ExitSuccess <- ffmpeg [scaled] args (parts !! columni)
+                    return ()
 
                 whenJust mbPadding $ \padding ->
                     let args =
@@ -215,24 +220,33 @@ resizeTileset Config{..} input resizeAnd output = do
                                 ("crop=128:"%d%":0:"%d%",pad=128:"%d%":0:0:0x000000@0x00")
                                 padding (size * (columns - 1)) size
                             ]
-                     in void $ ffmpeg [scaled] args (parts !! (columns - 1))
+                     in do
+                         !ExitSuccess <- ffmpeg [scaled] args (parts !! (columns - 1))
+                         return ()
 
                 -- put columns together
+
                 let args = ["-filter_complex", format ("hstack=inputs="%d) columns]
-                 in ffmpeg parts args output
+                 in do
+                     !ExitSuccess <- ffmpeg parts args output
+                     -- printf ("Composed "%fp%" from "%w%"\n") output parts
+                     return ()
 
                 -- Cleanup
                 forM_ (input : scaled : parts)
                     rm
 
-    return ExitSuccess
+    testfile output <&> (|| dryRun) >>= \case
+        True -> return ExitSuccess
+        False -> die $ format ("resizeTileset: failed to produce output: "%fp%"\n") output
 
 
 --- Commands
 
+
 ffmpegDry :: [FilePath] -> [Text] -> FilePath -> IO ExitCode
 ffmpegDry inputs args output = do
-    Just ffmpegBin <- which "ffmpeg"
+    ffmpegBin <- getffmpeg
     let inputFormatted :: [Text]
         inputFormatted = case inputs of
             [] -> []
@@ -245,7 +259,7 @@ ffmpegDry inputs args output = do
 
 ffmpeg :: [FilePath] -> [Text] -> FilePath -> IO ExitCode
 ffmpeg inputs args output = do
-    Just ffmpegBin <- which "ffmpeg"
+    ffmpegBin <- getffmpeg
     let cmd = toText' ffmpegBin
         inputFormatted :: [Text]
         inputFormatted = case inputs of
@@ -258,10 +272,24 @@ ffmpeg inputs args output = do
                 (throw (toException $ ProcFailed cmd cmdArgs ec))
                 (\e -> eprintf ("Caught "%w%"\nstderr:\n"%s%"\n") (e :: ProcFailed) stdErr)
             return ec
-        _ -> return ExitSuccess
-
+        !_ -> testfile output >>= \case
+            True -> do
+                -- printf ("ffmpeg: output success: "%fp%"\n") output
+                return ExitSuccess
+            False -> do
+                die (format ("ffmpeg: output failure: "%fp%"\n") output)
+                return (ExitFailure 1)
 
 --- UTIL
+
+
+debugPrint :: MonadIO io => Format (io ()) (a -> IO b) -> a -> a
+debugPrint txt s = do
+    let !_ = unsafePerformIO (printf (txt%"\n") s)
+    s
+
+getffmpeg :: IO FilePath
+getffmpeg = (which "ffmpeg") <&> fromMaybe (error "ffmpeg is not installed")
 
 
 relpath :: FilePath -> FilePath -> FilePath
@@ -270,15 +298,19 @@ relpath fromDir fullPath =
         & stripPrefix (directory fromDir)
         & fromMaybe fullPath
 
-debugPrint :: MonadIO io => Format (io ()) (a -> IO b) -> a -> a
-debugPrint txt s = do
-    let !_ = unsafePerformIO (printf (txt%"\n") s)
-    s
-
 
 toText' :: FilePath -> Text
 toText' =
     let err = format ("Unable to decode filename: "%s) >>> Text.unpack >>> error
     in toText >>> either err id
 
+
+whenJust :: Monad m => Maybe a -> (a -> m ()) -> m ()
 whenJust = flip (maybe (return ()))
+
+
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM mb mf = do
+    b <- mb
+    when b
+        mf
