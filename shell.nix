@@ -16,7 +16,7 @@ let
     src = ./.;
     isExecutable = true;
     postConfigure = ''
-      substituteInPlace Main.hs --replace '(which "ffmpeg")' \
+      substituteInPlace ProjectUraniumAutoBuilder.hs --replace '(which "ffmpeg")' \
         '(let bin = "${ffmpeg}/bin/ffmpeg" in do { exists <- testfile bin; if exists then return (Just bin) else return Nothing })'
     '';
     shellHook = ''

@@ -18,7 +18,7 @@ build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
 executable ProjectUraniumAutoBuilderHs
-  main-is:             Main.hs
+  main-is:             ProjectUraniumAutoBuilder.hs
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.13 && <4.14, text, turtle
